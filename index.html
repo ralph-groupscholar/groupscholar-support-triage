@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Group Scholar Support Triage</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="aurora"></div>
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Group Scholar Ops Console</p>
+        <h1>Support Triage Desk</h1>
+        <p class="subtitle">
+          Local-first intake and prioritization for scholar support cases with
+          urgency scoring, SLA cues, and weekly brief output.
+        </p>
+      </div>
+      <div class="hero-actions">
+        <button id="seed-data" class="ghost">Load sample cases</button>
+        <button id="clear-data" class="ghost danger">Clear local data</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel metrics">
+        <h2>Today at a glance</h2>
+        <div class="metrics-grid" id="metrics"></div>
+      </section>
+
+      <section class="panel">
+        <h2>New support case</h2>
+        <form id="case-form" class="case-form">
+          <div class="field">
+            <label for="scholar">Scholar</label>
+            <input id="scholar" name="scholar" placeholder="Scholar name" required />
+          </div>
+          <div class="field">
+            <label for="summary">Issue summary</label>
+            <input id="summary" name="summary" placeholder="Short description" required />
+          </div>
+          <div class="field">
+            <label for="channel">Channel</label>
+            <select id="channel" name="channel">
+              <option>Email</option>
+              <option>Phone</option>
+              <option>Slack</option>
+              <option>Form</option>
+              <option>Event</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="category">Category</label>
+            <select id="category" name="category">
+              <option>Financial aid</option>
+              <option>Academic support</option>
+              <option>Wellbeing</option>
+              <option>Program operations</option>
+              <option>Technology access</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="urgency">Urgency</label>
+            <select id="urgency" name="urgency">
+              <option>Low</option>
+              <option selected>Medium</option>
+              <option>High</option>
+              <option>Critical</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="status">Status</label>
+            <select id="status" name="status">
+              <option>Open</option>
+              <option>Pending</option>
+              <option>Resolved</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="owner">Owner</label>
+            <input id="owner" name="owner" placeholder="Case owner" />
+          </div>
+          <div class="field">
+            <label for="next-step">Next step</label>
+            <input id="next-step" name="nextStep" placeholder="Action needed" />
+          </div>
+          <div class="field">
+            <label for="created">Created</label>
+            <input id="created" name="created" type="date" required />
+          </div>
+          <div class="field">
+            <label for="last-touch">Last touch</label>
+            <input id="last-touch" name="lastTouch" type="date" required />
+          </div>
+          <div class="field">
+            <label for="due">Due by</label>
+            <input id="due" name="due" type="date" />
+          </div>
+          <div class="field span-two">
+            <button type="submit">Add case</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Active queue</h2>
+            <p class="muted">Sorted by priority score.</p>
+          </div>
+          <div class="filters">
+            <input id="search" placeholder="Search scholar or summary" />
+            <select id="filter-status">
+              <option value="all">All statuses</option>
+              <option value="Open">Open</option>
+              <option value="Pending">Pending</option>
+              <option value="Resolved">Resolved</option>
+            </select>
+            <select id="filter-owner">
+              <option value="all">All owners</option>
+            </select>
+          </div>
+        </div>
+        <div class="queue" id="queue"></div>
+      </section>
+
+      <section class="grid-two">
+        <div class="panel">
+          <h2>Today actions</h2>
+          <div id="actions"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Weekly brief</h2>
+              <p class="muted">Copy-ready summary for leadership updates.</p>
+            </div>
+            <button id="copy-brief" class="ghost">Copy brief</button>
+          </div>
+          <textarea id="brief" rows="12" readonly></textarea>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Import / export</h2>
+            <p class="muted">Share JSON snapshots across teams.</p>
+          </div>
+          <div class="inline-actions">
+            <button id="export-json" class="ghost">Export JSON</button>
+            <label class="ghost file-label">
+              Import JSON
+              <input id="import-json" type="file" accept="application/json" />
+            </label>
+          </div>
+        </div>
+        <pre id="export-preview">No export generated yet.</pre>
+      </section>
+    </main>
+
+    <footer>
+      <p>Local-first. Data stays in your browser.</p>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
