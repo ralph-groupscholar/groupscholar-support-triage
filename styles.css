@@ -221,7 +221,7 @@ button.danger {
   padding: 18px;
   border: 1px solid var(--border);
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr;
   gap: 12px;
   align-items: center;
 }
@@ -252,6 +252,34 @@ button.danger {
 .badge.low {
   background: rgba(20, 190, 150, 0.15);
   color: #118467;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  background: rgba(15, 27, 43, 0.04);
+}
+
+.chip.ok {
+  color: #0f1b2b;
+}
+
+.chip.warning {
+  background: rgba(242, 107, 58, 0.12);
+  color: var(--accent-dark);
+  border-color: rgba(242, 107, 58, 0.2);
+}
+
+.chip.danger {
+  background: rgba(177, 40, 40, 0.12);
+  color: #8e1f1f;
+  border-color: rgba(177, 40, 40, 0.2);
 }
 
 .grid-two {

@@ -4,7 +4,7 @@ A local-first support desk for scholar-facing cases. Capture new support request
 
 ## Features
 - Case intake with urgency, category, owner, and SLA dates
-- Priority scoring with overdue and stale touchpoint detection
+- Priority scoring with due-soon and touchpoint SLA detection
 - Action list for the top cases that need attention today
 - Weekly brief output ready for leadership updates
 - JSON import/export for sharing snapshots across teams

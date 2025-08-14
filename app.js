@@ -26,6 +26,13 @@ const urgencyWeights = {
   Critical: 6,
 };
 
+const touchSlaDays = {
+  Low: 7,
+  Medium: 4,
+  High: 2,
+  Critical: 1,
+};
+
 const sampleCases = [
   {
     scholar: 'Avery Hill',
@@ -111,12 +118,47 @@ function daysBetween(dateString) {
   return Math.max(0, Math.round(diff / (1000 * 60 * 60 * 24)));
 }
 
+function daysUntil(dateString) {
+  if (!dateString) return null;
+  const target = new Date(dateString);
+  const now = new Date();
+  const diff = target.setHours(0, 0, 0, 0) - now.setHours(0, 0, 0, 0);
+  return Math.round(diff / (1000 * 60 * 60 * 24));
+}
+
+function addDays(dateString, days) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDelta(delta, prefix = 'due') {
+  if (delta === null || Number.isNaN(delta)) return '';
+  if (delta === 0) return `${prefix} today`;
+  if (delta > 0) return `${prefix} in ${delta}d`;
+  return `${prefix} overdue by ${Math.abs(delta)}d`;
+}
+
 function computePriority(caseItem) {
   const urgencyWeight = urgencyWeights[caseItem.urgency] || 1;
   const daysSinceLast = daysBetween(caseItem.lastTouch);
   const daysSinceCreated = daysBetween(caseItem.created);
-  const overdue = caseItem.due && new Date(caseItem.due) < new Date(todayIso());
-  const score = urgencyWeight * 10 + daysSinceLast + Math.floor(daysSinceCreated / 5) + (overdue ? 12 : 0);
+  const dueInDays = daysUntil(caseItem.due);
+  const overdue = dueInDays !== null && dueInDays < 0;
+  const dueSoon = dueInDays !== null && dueInDays >= 0 && dueInDays <= 2;
+  const touchWindow = touchSlaDays[caseItem.urgency] ?? 4;
+  const nextTouchDue = caseItem.lastTouch ? addDays(caseItem.lastTouch, touchWindow) : '';
+  const daysToNextTouch = nextTouchDue ? daysUntil(nextTouchDue) : null;
+  const touchOverdue = daysToNextTouch !== null && daysToNextTouch < 0;
+  const touchDueSoon = daysToNextTouch !== null && daysToNextTouch >= 0 && daysToNextTouch <= 1;
+  const score =
+    urgencyWeight * 10 +
+    daysSinceLast +
+    Math.floor(daysSinceCreated / 5) +
+    (overdue ? 12 : 0) +
+    (dueSoon ? 5 : 0) +
+    (touchOverdue ? 8 : 0);
   const adjustedScore = caseItem.status === 'Resolved' ? score - 20 : score;
 
   let band = 'low';
@@ -125,6 +167,8 @@ function computePriority(caseItem) {
 
   let recommendation = 'Monitor and respond within 48 hours.';
   if (overdue) recommendation = 'Overdue: update scholar and log next step.';
+  else if (touchOverdue) recommendation = 'Touchpoint overdue: reach out today.';
+  else if (dueSoon) recommendation = 'Due soon: confirm delivery plan.';
   else if (daysSinceLast >= 7) recommendation = 'Stale touchpoint: send a check-in today.';
   else if (caseItem.urgency === 'High' || caseItem.urgency === 'Critical')
     recommendation = 'Escalate: confirm owner response and next step.';
@@ -133,6 +177,12 @@ function computePriority(caseItem) {
     score: adjustedScore,
     band,
     overdue,
+    dueSoon,
+    dueInDays,
+    nextTouchDue,
+    daysToNextTouch,
+    touchOverdue,
+    touchDueSoon,
     daysSinceLast,
     recommendation,
   };
@@ -148,6 +198,8 @@ function enrichCases(cases) {
 function renderMetrics(cases) {
   const active = cases.filter((item) => item.status !== 'Resolved');
   const overdue = active.filter((item) => item.overdue).length;
+  const dueSoon = active.filter((item) => item.dueSoon).length;
+  const touchOverdue = active.filter((item) => item.touchOverdue).length;
   const unassigned = active.filter((item) => !item.owner).length;
   const highUrgency = active.filter((item) => ['High', 'Critical'].includes(item.urgency)).length;
   const stale = active.filter((item) => item.daysSinceLast >= 7).length;
@@ -155,6 +207,8 @@ function renderMetrics(cases) {
   const metrics = [
     { label: 'Active cases', value: active.length },
     { label: 'Overdue', value: overdue },
+    { label: 'Due soon', value: dueSoon },
+    { label: 'Touch overdue', value: touchOverdue },
     { label: 'Unassigned', value: unassigned },
     { label: 'High urgency', value: highUrgency },
     { label: 'Stale touchpoints', value: stale },
@@ -203,6 +257,16 @@ function renderQueue(cases) {
           <div>
             <div class="muted">Last touch</div>
             <div>${item.lastTouch || 'None'} (${item.daysSinceLast}d)</div>
+            <div class="chip ${item.touchOverdue ? 'danger' : item.touchDueSoon ? 'warning' : 'ok'}">
+              ${item.nextTouchDue ? `${item.nextTouchDue} · ${formatDelta(item.daysToNextTouch, 'touch')}` : 'Touch SLA: n/a'}
+            </div>
+          </div>
+          <div>
+            <div class="muted">Case due</div>
+            <div>${item.due || 'Not set'}</div>
+            <div class="chip ${item.overdue ? 'danger' : item.dueSoon ? 'warning' : 'ok'}">
+              ${item.due ? formatDelta(item.dueInDays) : 'SLA: n/a'}
+            </div>
           </div>
           <div>
             <div class="muted">Next step</div>
@@ -244,6 +308,8 @@ function renderActions(cases) {
 function renderBrief(cases) {
   const active = cases.filter((item) => item.status !== 'Resolved');
   const overdue = active.filter((item) => item.overdue);
+  const dueSoon = active.filter((item) => item.dueSoon);
+  const touchOverdue = active.filter((item) => item.touchOverdue);
   const highUrgency = active.filter((item) => ['High', 'Critical'].includes(item.urgency));
   const unassigned = active.filter((item) => !item.owner);
 
@@ -259,6 +325,8 @@ function renderBrief(cases) {
     `Overdue: ${overdue.length}`,
     `High urgency: ${highUrgency.length}`,
     `Unassigned: ${unassigned.length}`,
+    `Due soon (<=2d): ${dueSoon.length}`,
+    `Touch overdue: ${touchOverdue.length}`,
     '',
     'Top priorities:',
     topCases || '- None yet',
