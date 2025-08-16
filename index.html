@@ -16,6 +16,13 @@
           Local-first intake and prioritization for scholar support cases with
           urgency scoring, SLA cues, and weekly brief output.
         </p>
+        <div class="status-card">
+          <span id="storage-dot" class="status-dot"></span>
+          <div>
+            <p id="storage-status" class="status-title">Checking storage...</p>
+            <p id="storage-detail" class="muted status-detail">Attempting to reach support database.</p>
+          </div>
+        </div>
       </div>
       <div class="hero-actions">
         <button id="seed-data" class="ghost">Load sample cases</button>
@@ -128,6 +135,17 @@
 
       <section class="grid-two">
         <div class="panel">
+          <h2>Owner workload</h2>
+          <div id="owner-workload"></div>
+        </div>
+        <div class="panel">
+          <h2>Risk radar</h2>
+          <div id="risk-radar"></div>
+        </div>
+      </section>
+
+      <section class="grid-two">
+        <div class="panel">
           <h2>Today actions</h2>
           <div id="actions"></div>
         </div>
@@ -162,7 +180,7 @@
     </main>
 
     <footer>
-      <p>Local-first. Data stays in your browser.</p>
+      <p>Storage mode: <span id="storage-foot">Local browser storage</span>.</p>
     </footer>
 
     <script src="app.js"></script>

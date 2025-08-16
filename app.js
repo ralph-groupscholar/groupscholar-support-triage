@@ -5,6 +5,8 @@ const queueEl = document.getElementById('queue');
 const actionsEl = document.getElementById('actions');
 const briefEl = document.getElementById('brief');
 const exportPreviewEl = document.getElementById('export-preview');
+const ownerWorkloadEl = document.getElementById('owner-workload');
+const riskRadarEl = document.getElementById('risk-radar');
 
 const form = document.getElementById('case-form');
 const searchInput = document.getElementById('search');
@@ -16,6 +18,11 @@ const clearButton = document.getElementById('clear-data');
 const exportButton = document.getElementById('export-json');
 const importInput = document.getElementById('import-json');
 const copyBriefButton = document.getElementById('copy-brief');
+
+const storageStatusEl = document.getElementById('storage-status');
+const storageDetailEl = document.getElementById('storage-detail');
+const storageDotEl = document.getElementById('storage-dot');
+const storageFootEl = document.getElementById('storage-foot');
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -88,13 +95,23 @@ const sampleCases = [
   },
 ];
 
+const state = {
+  cases: [],
+  storage: {
+    mode: 'local',
+    label: 'Local browser storage',
+    detail: 'No server connection detected yet.',
+    healthy: false,
+  },
+};
+
 function shiftDate(days) {
   const date = new Date();
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
 }
 
-function loadCases() {
+function loadLocalCases() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return [];
   try {
@@ -106,8 +123,167 @@ function loadCases() {
   }
 }
 
-function saveCases(cases) {
+function saveLocalCases(cases) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cases));
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 2000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function updateStorageStatus(next) {
+  state.storage = { ...state.storage, ...next };
+  if (storageStatusEl) storageStatusEl.textContent = state.storage.label;
+  if (storageDetailEl) storageDetailEl.textContent = state.storage.detail;
+  if (storageFootEl) storageFootEl.textContent = state.storage.label;
+  if (storageDotEl) {
+    storageDotEl.classList.toggle('ok', state.storage.healthy);
+    storageDotEl.classList.toggle('warn', !state.storage.healthy);
+  }
+}
+
+async function detectStorage() {
+  try {
+    const response = await fetchWithTimeout('/api/health');
+    if (!response.ok) throw new Error('Health check failed');
+    const data = await response.json();
+    updateStorageStatus({
+      mode: 'remote',
+      label: 'Shared support database',
+      detail: `Server storage: ${data.storage}`,
+      healthy: true,
+    });
+  } catch (error) {
+    updateStorageStatus({
+      mode: 'local',
+      label: 'Local browser storage',
+      detail: 'Server unavailable. Running in offline mode.',
+      healthy: false,
+    });
+  }
+}
+
+async function readCases() {
+  if (state.storage.mode === 'remote') {
+    try {
+      const response = await fetch('/api/cases');
+      if (!response.ok) throw new Error('Failed to load cases');
+      const payload = await response.json();
+      return Array.isArray(payload.cases) ? payload.cases : [];
+    } catch (error) {
+      updateStorageStatus({
+        mode: 'local',
+        label: 'Local browser storage',
+        detail: 'Server unreachable. Switched to offline mode.',
+        healthy: false,
+      });
+    }
+  }
+
+  return loadLocalCases();
+}
+
+async function createCase(payload) {
+  if (state.storage.mode === 'remote') {
+    try {
+      const response = await fetch('/api/cases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error('Create failed');
+      const data = await response.json();
+      return data.case;
+    } catch (error) {
+      updateStorageStatus({
+        mode: 'local',
+        label: 'Local browser storage',
+        detail: 'Server write failed. Saved locally instead.',
+        healthy: false,
+      });
+    }
+  }
+
+  const cases = loadLocalCases();
+  const record = { id: crypto.randomUUID(), ...payload };
+  cases.push(record);
+  saveLocalCases(cases);
+  return record;
+}
+
+async function replaceCases(list) {
+  if (state.storage.mode === 'remote') {
+    try {
+      const response = await fetch('/api/cases', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cases: list }),
+      });
+      if (!response.ok) throw new Error('Replace failed');
+      const data = await response.json();
+      return Array.isArray(data.cases) ? data.cases : list;
+    } catch (error) {
+      updateStorageStatus({
+        mode: 'local',
+        label: 'Local browser storage',
+        detail: 'Server replace failed. Stored locally.',
+        healthy: false,
+      });
+    }
+  }
+
+  saveLocalCases(list);
+  return list;
+}
+
+async function seedCases() {
+  if (state.storage.mode === 'remote') {
+    try {
+      const response = await fetch('/api/seed', { method: 'POST' });
+      if (!response.ok) throw new Error('Seed failed');
+      await refreshCases();
+      return;
+    } catch (error) {
+      updateStorageStatus({
+        mode: 'local',
+        label: 'Local browser storage',
+        detail: 'Server seed failed. Seeding locally instead.',
+        healthy: false,
+      });
+    }
+  }
+
+  const cases = loadLocalCases();
+  const seeded = sampleCases.map((item) => ({ id: crypto.randomUUID(), ...item }));
+  saveLocalCases([...cases, ...seeded]);
+  await refreshCases();
+}
+
+async function clearCases() {
+  if (state.storage.mode === 'remote') {
+    try {
+      const response = await fetch('/api/cases', { method: 'DELETE' });
+      if (!response.ok) throw new Error('Clear failed');
+      await refreshCases();
+      return;
+    } catch (error) {
+      updateStorageStatus({
+        mode: 'local',
+        label: 'Local browser storage',
+        detail: 'Server clear failed. Clearing locally instead.',
+        healthy: false,
+      });
+    }
+  }
+
+  localStorage.removeItem(STORAGE_KEY);
+  await refreshCases();
 }
 
 function daysBetween(dateString) {
@@ -305,6 +481,87 @@ function renderActions(cases) {
   }
 }
 
+function renderOwnerWorkload(cases) {
+  const active = cases.filter((item) => item.status !== 'Resolved');
+  const stats = new Map();
+
+  active.forEach((item) => {
+    const owner = item.owner?.trim() || 'Unassigned';
+    if (!stats.has(owner)) {
+      stats.set(owner, { owner, total: 0, overdue: 0, highUrgency: 0, touchOverdue: 0 });
+    }
+    const entry = stats.get(owner);
+    entry.total += 1;
+    if (item.overdue) entry.overdue += 1;
+    if (item.touchOverdue) entry.touchOverdue += 1;
+    if (['High', 'Critical'].includes(item.urgency)) entry.highUrgency += 1;
+  });
+
+  const rows = Array.from(stats.values()).sort((a, b) => {
+    if (a.owner === 'Unassigned') return -1;
+    if (b.owner === 'Unassigned') return 1;
+    return b.total - a.total || a.owner.localeCompare(b.owner);
+  });
+
+  if (!rows.length) {
+    ownerWorkloadEl.innerHTML = '<p class="muted">No active cases to assign yet.</p>';
+    return;
+  }
+
+  ownerWorkloadEl.innerHTML = rows
+    .map(
+      (row) => `
+        <div class="workload-row">
+          <div class="workload-meta">
+            <strong>${row.owner}</strong>
+            <span class="muted">${row.total} active · ${row.overdue} overdue · ${row.highUrgency} high urgency</span>
+          </div>
+          <div class="workload-badges">
+            <span class="pill ${row.overdue ? 'danger' : ''}">Overdue ${row.overdue}</span>
+            <span class="pill ${row.touchOverdue ? 'warning' : ''}">Touch ${row.touchOverdue}</span>
+            <span class="pill ${row.highUrgency ? 'warning' : ''}">High ${row.highUrgency}</span>
+          </div>
+        </div>
+      `
+    )
+    .join('');
+}
+
+function renderRiskRadar(cases) {
+  const active = cases.filter((item) => item.status !== 'Resolved');
+  const overdue = active.filter((item) => item.overdue).length;
+  const dueSoon = active.filter((item) => item.dueSoon).length;
+  const touchOverdue = active.filter((item) => item.touchOverdue).length;
+  const unassigned = active.filter((item) => !item.owner).length;
+  const highUrgency = active.filter((item) => ['High', 'Critical'].includes(item.urgency)).length;
+  const stale = active.filter((item) => item.daysSinceLast >= 7).length;
+
+  const risks = [
+    { label: 'Overdue cases', value: overdue, level: overdue ? 'danger' : 'ok' },
+    { label: 'Touch overdue', value: touchOverdue, level: touchOverdue ? 'danger' : 'ok' },
+    { label: 'Unassigned cases', value: unassigned, level: unassigned ? 'danger' : 'ok' },
+    { label: 'Due in 2 days', value: dueSoon, level: dueSoon ? 'warning' : 'ok' },
+    { label: 'High urgency', value: highUrgency, level: highUrgency ? 'warning' : 'ok' },
+    { label: 'Stale touchpoints', value: stale, level: stale ? 'warning' : 'ok' },
+  ];
+
+  riskRadarEl.innerHTML = risks
+    .map(
+      (risk) => `
+        <div class="risk-row">
+          <div class="workload-meta">
+            <strong>${risk.label}</strong>
+            <span class="muted">${risk.value} flagged</span>
+          </div>
+          <div class="risk-badges">
+            <span class="pill ${risk.level}">${risk.level === 'ok' ? 'Clear' : 'Needs attention'}</span>
+          </div>
+        </div>
+      `
+    )
+    .join('');
+}
+
 function renderBrief(cases) {
   const active = cases.filter((item) => item.status !== 'Resolved');
   const overdue = active.filter((item) => item.overdue);
@@ -312,6 +569,16 @@ function renderBrief(cases) {
   const touchOverdue = active.filter((item) => item.touchOverdue);
   const highUrgency = active.filter((item) => ['High', 'Critical'].includes(item.urgency));
   const unassigned = active.filter((item) => !item.owner);
+  const ownerLoad = active.reduce((acc, item) => {
+    const owner = item.owner?.trim() || 'Unassigned';
+    acc[owner] = (acc[owner] || 0) + 1;
+    return acc;
+  }, {});
+  const ownerSummary = Object.entries(ownerLoad)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([owner, count]) => `- ${owner}: ${count} active`)
+    .join('\n');
 
   const topCases = active
     .sort((a, b) => b.score - a.score)
@@ -331,6 +598,9 @@ function renderBrief(cases) {
     'Top priorities:',
     topCases || '- None yet',
     '',
+    'Owner load:',
+    ownerSummary || '- No active owners yet',
+    '',
     'Watch list:',
     overdue.length ? `- Overdue cases: ${overdue.length}` : '- No overdue cases',
     unassigned.length ? `- Unassigned cases: ${unassigned.length}` : '- All cases have owners',
@@ -339,6 +609,7 @@ function renderBrief(cases) {
 
 function renderOwnerFilter(cases) {
   const owners = Array.from(new Set(cases.map((item) => item.owner).filter(Boolean))).sort();
+  const selected = filterOwner.value;
   filterOwner.innerHTML = '<option value="all">All owners</option>';
   owners.forEach((owner) => {
     const option = document.createElement('option');
@@ -346,45 +617,39 @@ function renderOwnerFilter(cases) {
     option.textContent = owner;
     filterOwner.appendChild(option);
   });
+  if (owners.includes(selected)) {
+    filterOwner.value = selected;
+  }
 }
 
 function render() {
-  const cases = enrichCases(loadCases());
-  renderMetrics(cases);
-  renderOwnerFilter(cases);
-  renderQueue(cases);
-  renderActions(cases);
-  renderBrief(cases);
+  const enriched = enrichCases(state.cases);
+  renderMetrics(enriched);
+  renderOwnerFilter(enriched);
+  renderQueue(enriched);
+  renderActions(enriched);
+  renderOwnerWorkload(enriched);
+  renderRiskRadar(enriched);
+  renderBrief(enriched);
 }
 
-function addCase(payload) {
-  const cases = loadCases();
-  cases.push({
-    id: crypto.randomUUID(),
-    ...payload,
-  });
-  saveCases(cases);
+async function refreshCases() {
+  state.cases = await readCases();
   render();
 }
 
-function seedData() {
-  const cases = loadCases();
-  const seeded = sampleCases.map((item) => ({
-    id: crypto.randomUUID(),
-    ...item,
-  }));
-  saveCases([...cases, ...seeded]);
+async function handleAddCase(payload) {
+  const created = await createCase(payload);
+  state.cases = [...state.cases, created];
   render();
 }
 
-function clearData() {
-  localStorage.removeItem(STORAGE_KEY);
-  render();
-}
-
-function handleExport() {
-  const data = loadCases();
-  const payload = JSON.stringify({ generatedAt: new Date().toISOString(), cases: data }, null, 2);
+async function handleExport() {
+  const payload = JSON.stringify(
+    { generatedAt: new Date().toISOString(), cases: state.cases },
+    null,
+    2
+  );
   exportPreviewEl.textContent = payload;
 
   const blob = new Blob([payload], { type: 'application/json' });
@@ -400,14 +665,14 @@ function handleImport(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try {
       const parsed = JSON.parse(reader.result);
       const incoming = Array.isArray(parsed) ? parsed : parsed.cases;
       if (!Array.isArray(incoming)) {
         throw new Error('Invalid payload');
       }
-      saveCases(incoming);
+      state.cases = await replaceCases(incoming);
       render();
     } catch (error) {
       alert('Import failed. Please check the JSON format.');
@@ -434,11 +699,11 @@ function initDates() {
   lastTouchInput.value = today;
 }
 
-form.addEventListener('submit', (event) => {
+form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const formData = new FormData(form);
   const payload = Object.fromEntries(formData.entries());
-  addCase(payload);
+  await handleAddCase(payload);
   form.reset();
   initDates();
 });
@@ -448,11 +713,26 @@ form.addEventListener('submit', (event) => {
   input.addEventListener('change', render);
 });
 
-seedButton.addEventListener('click', seedData);
-clearButton.addEventListener('click', clearData);
+seedButton.addEventListener('click', () => {
+  seedCases();
+});
+clearButton.addEventListener('click', () => {
+  clearCases();
+});
 exportButton.addEventListener('click', handleExport);
 importInput.addEventListener('change', handleImport);
 copyBriefButton.addEventListener('click', handleCopyBrief);
 
-initDates();
-render();
+async function init() {
+  initDates();
+  updateStorageStatus({
+    mode: 'local',
+    label: 'Checking storage...',
+    detail: 'Attempting to reach support database.',
+    healthy: false,
+  });
+  await detectStorage();
+  await refreshCases();
+}
+
+init();
