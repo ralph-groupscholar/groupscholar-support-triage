@@ -8,6 +8,7 @@ A local-first support desk for scholar-facing cases with optional cloud sync. Ca
 - Action list for the top cases that need attention today
 - Outreach plan for high-touch cases that need updates or escalations
 - SLA outlook for upcoming due dates and touchpoint deadlines
+- Recent activity feed for touches, resolves, and intake updates
 - Case aging summary, channel mix, and signal breakdown insights
 - Resolution velocity and SLA compliance tracking
 - Weekly brief output ready for leadership updates

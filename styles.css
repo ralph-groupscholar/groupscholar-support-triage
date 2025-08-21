@@ -334,6 +334,48 @@ button.danger {
   gap: 6px;
 }
 
+.activity-list {
+  display: grid;
+  gap: 12px;
+}
+
+.activity-item {
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+  display: grid;
+  gap: 10px;
+}
+
+.activity-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.activity-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.activity-body {
+  display: grid;
+  gap: 6px;
+}
+
+.activity-body strong {
+  font-size: 1rem;
+}
+
+.activity-detail {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
 .plan-item {
   padding: 14px;
   border-radius: 16px;
@@ -488,6 +530,43 @@ button.danger {
   align-items: center;
 }
 
+.coverage-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+  align-items: center;
+}
+
+.coverage-row + .coverage-row {
+  margin-top: 12px;
+}
+
+.coverage-row strong {
+  display: block;
+}
+
+.coverage-meta {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.coverage-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.coverage-owner {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 .workload-row + .workload-row,
 .risk-row + .risk-row {
   margin-top: 12px;
@@ -557,6 +636,47 @@ button.danger {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
+}
+
+.playbook-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.playbook-card {
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  display: grid;
+  gap: 12px;
+}
+
+.playbook-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.playbook-header h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+
+.playbook-header p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.playbook-steps {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
 }
 
 .signal-card {

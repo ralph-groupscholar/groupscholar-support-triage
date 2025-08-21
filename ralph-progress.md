@@ -1,5 +1,15 @@
 # Ralph Progress Log
 
+## Iteration 105
+- Added a recent activity feed to surface touches, resolves, and intake updates.
+- Centralized event logging for create/touch/resolve/reopen actions.
+- Styled activity cards to match the support triage dashboard.
+
+## Iteration 24
+- Added coverage suggestions to recommend owners for unassigned or overdue cases.
+- Built response playbook cards with category-specific next steps and urgency mix.
+- Extended weekly brief output with coverage recommendations.
+
 ## Iteration 22
 - Added resolution velocity and SLA compliance panels to highlight throughput and on-time performance.
 - Implemented new analytics for 7-day intake vs resolution and 30-day median close time.

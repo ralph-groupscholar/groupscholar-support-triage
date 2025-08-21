@@ -18,6 +18,8 @@ const responsePlaybookEl = document.getElementById('response-playbook');
 const activityFeedEl = document.getElementById('activity-feed');
 const resolutionVelocityEl = document.getElementById('resolution-velocity');
 const slaComplianceEl = document.getElementById('sla-compliance');
+const touchpointCadenceEl = document.getElementById('touchpoint-cadence');
+const ownerFocusEl = document.getElementById('owner-focus');
 
 const form = document.getElementById('case-form');
 const searchInput = document.getElementById('search');
@@ -327,7 +329,6 @@ async function createCase(payload) {
   const record = { id: crypto.randomUUID(), ...payload };
   cases.push(record);
   saveLocalCases(cases);
-  appendLocalEvent(buildEvent('created', record, 'Case logged.'));
   return record;
 }
 
@@ -487,6 +488,18 @@ function formatDateLabel(dateString) {
   const date = new Date(dateString);
   if (Number.isNaN(date.getTime())) return dateString;
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function formatEventTime(timestamp) {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return timestamp;
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 function computePriority(caseItem) {
@@ -1123,6 +1136,140 @@ function renderOutreachPlan(cases) {
     .join('');
 }
 
+function renderTouchpointCadence(cases) {
+  const active = cases.filter((item) => item.status !== 'Resolved');
+  if (!active.length) {
+    touchpointCadenceEl.innerHTML = '<p class="muted">No active cases to measure cadence yet.</p>';
+    return;
+  }
+
+  const urgencyOrder = ['Critical', 'High', 'Medium', 'Low'];
+  const rows = urgencyOrder
+    .map((urgency) => {
+      const items = active.filter((item) => item.urgency === urgency);
+      if (!items.length) return null;
+      const total = items.length;
+      const overdue = items.filter((item) => item.touchOverdue).length;
+      const dueSoon = items.filter((item) => item.touchDueSoon).length;
+      const averageTouch = Math.round(
+        items.reduce((sum, item) => sum + item.daysSinceLast, 0) / total
+      );
+      const overduePct = Math.round((overdue / total) * 100);
+      const dueSoonPct = Math.round((dueSoon / total) * 100);
+      const okPct = Math.max(0, 100 - overduePct - dueSoonPct);
+
+      return `
+        <div class="cadence-row">
+          <div class="cadence-meta">
+            <strong>${urgency}</strong>
+            <span class="muted">${total} cases · target ${touchSlaDays[urgency]}d · avg ${averageTouch}d since touch</span>
+          </div>
+          <div class="cadence-tags">
+            <span class="pill ${overdue ? 'danger' : 'ok'}">Overdue ${overdue}</span>
+            <span class="pill ${dueSoon ? 'warning' : 'ok'}">Due soon ${dueSoon}</span>
+          </div>
+          <div class="cadence-bar">
+            <span class="overdue" style="width: ${overduePct}%"></span>
+            <span class="soon" style="width: ${dueSoonPct}%"></span>
+            <span class="ok" style="width: ${okPct}%"></span>
+          </div>
+        </div>
+      `;
+    })
+    .filter(Boolean);
+
+  if (!rows.length) {
+    touchpointCadenceEl.innerHTML = '<p class="muted">No active cadence data yet.</p>';
+    return;
+  }
+
+  touchpointCadenceEl.innerHTML = rows.join('');
+}
+
+function renderOwnerFocus(cases) {
+  const active = cases.filter(
+    (item) => item.status !== 'Resolved' && item.owner && item.owner.trim()
+  );
+
+  if (!active.length) {
+    ownerFocusEl.innerHTML = '<p class="muted">No owners assigned yet.</p>';
+    return;
+  }
+
+  const grouped = new Map();
+  active.forEach((item) => {
+    const owner = item.owner.trim();
+    if (!grouped.has(owner)) grouped.set(owner, []);
+    grouped.get(owner).push(item);
+  });
+
+  const focusCards = Array.from(grouped.entries())
+    .map(([owner, items]) => {
+      const total = items.length;
+      const overdue = items.filter((item) => item.overdue).length;
+      const touchOverdue = items.filter((item) => item.touchOverdue).length;
+      const highUrgency = items.filter((item) =>
+        ['High', 'Critical'].includes(item.urgency)
+      ).length;
+      const topCases = [...items].sort((a, b) => b.score - a.score).slice(0, 2);
+
+      return {
+        owner,
+        total,
+        overdue,
+        touchOverdue,
+        highUrgency,
+        topCases,
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.total - a.total ||
+        b.overdue - a.overdue ||
+        b.touchOverdue - a.touchOverdue ||
+        a.owner.localeCompare(b.owner)
+    )
+    .slice(0, 4)
+    .map(
+      (entry) => `
+        <div class="focus-card">
+          <div class="focus-header">
+            <div>
+              <strong>${entry.owner}</strong>
+              <span class="muted">${entry.total} active · ${entry.overdue} overdue · ${entry.touchOverdue} touch overdue</span>
+            </div>
+            <span class="pill ${entry.highUrgency ? 'warning' : 'ok'}">High urgency ${entry.highUrgency}</span>
+          </div>
+          <div class="focus-list">
+            ${entry.topCases
+              .map(
+                (item) => `
+                  <div class="focus-item">
+                    <div class="focus-main">
+                      <strong>${item.scholar}</strong>
+                      <span class="muted">${item.summary}</span>
+                    </div>
+                    <div class="focus-tags">
+                      <span class="chip ${item.overdue ? 'danger' : item.dueSoon ? 'warning' : 'ok'}">
+                        ${item.due ? formatDelta(item.dueInDays) : 'Due n/a'}
+                      </span>
+                      <span class="chip ${item.touchOverdue ? 'danger' : item.touchDueSoon ? 'warning' : 'ok'}">
+                        ${item.nextTouchDue ? formatDelta(item.daysToNextTouch, 'touch') : 'Touch n/a'}
+                      </span>
+                      <span class="badge ${item.band}">${item.urgency}</span>
+                    </div>
+                  </div>
+                `
+              )
+              .join('')}
+          </div>
+        </div>
+      `
+    );
+
+  ownerFocusEl.innerHTML = focusCards.join('');
+}
+
 function renderAgingSummary(cases) {
   const active = cases.filter((item) => item.status !== 'Resolved');
   if (!active.length) {
@@ -1279,6 +1426,47 @@ function renderSlaOutlook(cases) {
     .join('');
 }
 
+function renderActivityFeed() {
+  if (!activityFeedEl) return;
+  const events = loadLocalEvents();
+  if (!events.length) {
+    activityFeedEl.innerHTML = '<p class="muted">No recent activity yet.</p>';
+    return;
+  }
+
+  const recent = events.slice(0, 8);
+  activityFeedEl.innerHTML = recent
+    .map((event) => {
+      const label = actionLabels[event.action] || 'Update';
+      const timestamp = formatEventTime(event.createdAt);
+      const summary = event.summary || event.detail || 'Update logged.';
+      const detail = event.summary && event.detail ? event.detail : '';
+      const tags = [];
+      if (event.owner) tags.push(`<span class="chip ok">Owner: ${event.owner}</span>`);
+      if (event.urgency) {
+        const urgencyClass =
+          event.urgency === 'Critical' ? 'danger' : event.urgency === 'High' ? 'warning' : 'ok';
+        tags.push(`<span class="chip ${urgencyClass}">${event.urgency}</span>`);
+      }
+
+      return `
+        <div class="activity-item">
+          <div class="activity-meta">
+            <span class="pill">${label}</span>
+            <span class="muted">${timestamp}</span>
+          </div>
+          <div class="activity-body">
+            <strong>${event.scholar || 'System update'}</strong>
+            <span>${summary}</span>
+            ${detail ? `<span class="activity-detail">${detail}</span>` : ''}
+            ${tags.length ? `<div class="activity-tags">${tags.join('')}</div>` : ''}
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+}
+
 function getTopBreakdown(items, key, order) {
   if (!items.length) return null;
   const counts = new Map();
@@ -1333,6 +1521,16 @@ function renderBrief(cases) {
     .join('\n');
 
   const coverage = buildCoverageSuggestions(active, 2);
+  const urgencyOrder = ['Critical', 'High', 'Medium', 'Low'];
+  const touchpointHotspots = urgencyOrder
+    .map((level) => {
+      const count = active.filter((item) => item.urgency === level && item.touchOverdue).length;
+      return { level, count };
+    })
+    .filter((entry) => entry.count > 0);
+  const touchpointSummary = touchpointHotspots.length
+    ? touchpointHotspots.map((entry) => `${entry.level} ${entry.count}`).join(', ')
+    : null;
   const coverageLines = coverage.suggestions.length
     ? coverage.suggestions
         .map(
@@ -1353,6 +1551,7 @@ function renderBrief(cases) {
     `Throughput (7d): ${velocity.resolved7} resolved vs ${velocity.intake7} intake (net ${velocity.net7 >= 0 ? '+' : ''}${velocity.net7})`,
     `Median resolution (30d): ${velocity.medianResolution !== null ? `${velocity.medianResolution}d` : 'n/a'}`,
     `On-time resolution (30d): ${velocity.onTimeRate !== null ? `${velocity.onTimeRate}%` : 'n/a'}`,
+    `Touchpoint cadence: ${touchpointSummary || 'No overdue touchpoints by urgency'}`,
     '',
     'Top priorities:',
     topCases || '- None yet',
@@ -1403,13 +1602,18 @@ function render() {
   renderActions(enriched);
   renderOwnerWorkload(enriched);
   renderRiskRadar(enriched);
+  renderCoverageSuggestions(enriched);
+  renderResponsePlaybook(enriched);
   renderResolutionVelocity(enriched);
   renderSlaCompliance(enriched);
   renderOutreachPlan(enriched);
+  renderTouchpointCadence(enriched);
+  renderOwnerFocus(enriched);
   renderAgingSummary(enriched);
   renderChannelMix(enriched);
   renderSignalBreakdown(enriched);
   renderSlaOutlook(enriched);
+  renderActivityFeed();
   renderBrief(enriched);
 }
 
@@ -1421,6 +1625,7 @@ async function refreshCases() {
 async function handleAddCase(payload) {
   const created = await createCase(payload);
   state.cases = [...state.cases, created];
+  appendLocalEvent(buildEvent('created', created, 'Case logged.'));
   render();
 }
 
@@ -1474,14 +1679,22 @@ function handleCopyBrief() {
 async function handleQuickAction(action, id) {
   const today = todayIso();
   let updates = {};
+  let eventAction = '';
+  let eventDetail = '';
   if (action === 'touch') {
     updates = { lastTouch: today };
+    eventAction = 'touched';
+    eventDetail = 'Touchpoint logged.';
   }
   if (action === 'resolve') {
     updates = { status: 'Resolved', lastTouch: today };
+    eventAction = 'resolved';
+    eventDetail = 'Case marked resolved.';
   }
   if (action === 'reopen') {
     updates = { status: 'Open', lastTouch: today };
+    eventAction = 'reopened';
+    eventDetail = 'Case reopened.';
   }
 
   if (!Object.keys(updates).length) return;
@@ -1489,6 +1702,9 @@ async function handleQuickAction(action, id) {
   const updated = await updateCaseRecord(id, updates);
   if (!updated) return;
   state.cases = state.cases.map((item) => (item.id === id ? updated : item));
+  if (eventAction) {
+    appendLocalEvent(buildEvent(eventAction, updated, eventDetail));
+  }
   render();
 }
 
