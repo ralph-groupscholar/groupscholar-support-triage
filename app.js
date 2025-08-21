@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'gsSupportTriage.v1';
+const EVENTS_KEY = 'gsSupportTriage.events.v1';
 
 const metricsEl = document.getElementById('metrics');
 const queueEl = document.getElementById('queue');
@@ -7,6 +8,16 @@ const briefEl = document.getElementById('brief');
 const exportPreviewEl = document.getElementById('export-preview');
 const ownerWorkloadEl = document.getElementById('owner-workload');
 const riskRadarEl = document.getElementById('risk-radar');
+const outreachPlanEl = document.getElementById('outreach-plan');
+const slaOutlookEl = document.getElementById('sla-outlook');
+const signalBreakdownEl = document.getElementById('signal-breakdown');
+const agingSummaryEl = document.getElementById('aging-summary');
+const channelMixEl = document.getElementById('channel-mix');
+const coverageSuggestionsEl = document.getElementById('coverage-suggestions');
+const responsePlaybookEl = document.getElementById('response-playbook');
+const activityFeedEl = document.getElementById('activity-feed');
+const resolutionVelocityEl = document.getElementById('resolution-velocity');
+const slaComplianceEl = document.getElementById('sla-compliance');
 
 const form = document.getElementById('case-form');
 const searchInput = document.getElementById('search');
@@ -38,6 +49,38 @@ const touchSlaDays = {
   Medium: 4,
   High: 2,
   Critical: 1,
+};
+
+const responsePlaybooks = {
+  'Financial aid': {
+    lead: 'Finance partner',
+    steps: ['Confirm award status', 'Share disbursement timeline', 'Set follow-up date'],
+  },
+  'Academic support': {
+    lead: 'Academic advisor',
+    steps: ['Assess course risk', 'Schedule coaching session', 'Log progress checkpoint'],
+  },
+  Wellbeing: {
+    lead: 'Care coordinator',
+    steps: ['Check immediate safety', 'Provide resource options', 'Confirm next touchpoint'],
+  },
+  'Program operations': {
+    lead: 'Program ops',
+    steps: ['Clarify policy', 'Confirm timeline', 'Document resolution path'],
+  },
+  'Technology access': {
+    lead: 'IT partner',
+    steps: ['Verify device status', 'Confirm replacement path', 'Set return/check-in date'],
+  },
+  Other: {
+    lead: 'Ops lead',
+    steps: ['Acknowledge receipt', 'Define next step', 'Log follow-up owner'],
+  },
+};
+
+const defaultPlaybook = {
+  lead: 'Ops lead',
+  steps: ['Acknowledge receipt', 'Confirm next step', 'Set follow-up date'],
 };
 
 const sampleCases = [
@@ -97,6 +140,7 @@ const sampleCases = [
 
 const state = {
   cases: [],
+  events: [],
   storage: {
     mode: 'local',
     label: 'Local browser storage',
@@ -104,6 +148,55 @@ const state = {
     healthy: false,
   },
 };
+
+const actionLabels = {
+  created: 'New case',
+  touched: 'Touch logged',
+  resolved: 'Resolved',
+  reopened: 'Reopened',
+  reassigned: 'Reassigned',
+  next_step: 'Next step',
+  updated: 'Updated',
+  seeded: 'Seeded',
+};
+
+function loadLocalEvents() {
+  const raw = localStorage.getItem(EVENTS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error('Failed to parse saved events', error);
+    return [];
+  }
+}
+
+function saveLocalEvents(events) {
+  localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
+}
+
+function buildEvent(action, caseItem, detail, overrides = {}) {
+  return {
+    id: crypto.randomUUID(),
+    caseId: caseItem.id,
+    scholar: caseItem.scholar,
+    summary: caseItem.summary,
+    urgency: caseItem.urgency,
+    owner: caseItem.owner || '',
+    action,
+    detail,
+    createdAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+function appendLocalEvent(event) {
+  const events = loadLocalEvents();
+  const next = [event, ...events].slice(0, 50);
+  saveLocalEvents(next);
+  return next;
+}
 
 function shiftDate(days) {
   const date = new Date();
@@ -189,6 +282,26 @@ async function readCases() {
   return loadLocalCases();
 }
 
+async function readEvents() {
+  if (state.storage.mode === 'remote') {
+    try {
+      const response = await fetch('/api/events');
+      if (!response.ok) throw new Error('Failed to load events');
+      const payload = await response.json();
+      return Array.isArray(payload.events) ? payload.events : [];
+    } catch (error) {
+      updateStorageStatus({
+        mode: 'local',
+        label: 'Local browser storage',
+        detail: 'Server unreachable. Switched to offline mode.',
+        healthy: false,
+      });
+    }
+  }
+
+  return loadLocalEvents();
+}
+
 async function createCase(payload) {
   if (state.storage.mode === 'remote') {
     try {
@@ -214,7 +327,37 @@ async function createCase(payload) {
   const record = { id: crypto.randomUUID(), ...payload };
   cases.push(record);
   saveLocalCases(cases);
+  appendLocalEvent(buildEvent('created', record, 'Case logged.'));
   return record;
+}
+
+async function updateCaseRecord(id, updates) {
+  if (state.storage.mode === 'remote') {
+    try {
+      const response = await fetch(`/api/cases/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (!response.ok) throw new Error('Update failed');
+      const data = await response.json();
+      return data.case;
+    } catch (error) {
+      updateStorageStatus({
+        mode: 'local',
+        label: 'Local browser storage',
+        detail: 'Server update failed. Saved locally instead.',
+        healthy: false,
+      });
+    }
+  }
+
+  const cases = loadLocalCases();
+  const index = cases.findIndex((item) => item.id === id);
+  if (index === -1) return null;
+  cases[index] = { ...cases[index], ...updates, id };
+  saveLocalCases(cases);
+  return cases[index];
 }
 
 async function replaceCases(list) {
@@ -294,12 +437,35 @@ function daysBetween(dateString) {
   return Math.max(0, Math.round(diff / (1000 * 60 * 60 * 24)));
 }
 
+function daysFromNow(dateString) {
+  if (!dateString) return null;
+  const target = new Date(dateString);
+  const now = new Date();
+  const diff = now.setHours(0, 0, 0, 0) - target.setHours(0, 0, 0, 0);
+  return Math.round(diff / (1000 * 60 * 60 * 24));
+}
+
 function daysUntil(dateString) {
   if (!dateString) return null;
   const target = new Date(dateString);
   const now = new Date();
   const diff = target.setHours(0, 0, 0, 0) - now.setHours(0, 0, 0, 0);
   return Math.round(diff / (1000 * 60 * 60 * 24));
+}
+
+function diffDays(startDate, endDate) {
+  if (!startDate || !endDate) return null;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  const diff = end.setHours(0, 0, 0, 0) - start.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round(diff / (1000 * 60 * 60 * 24)));
+}
+
+function inLastDays(dateString, days) {
+  const diff = daysFromNow(dateString);
+  if (diff === null || Number.isNaN(diff)) return false;
+  return diff >= 0 && diff <= days;
 }
 
 function addDays(dateString, days) {
@@ -314,6 +480,13 @@ function formatDelta(delta, prefix = 'due') {
   if (delta === 0) return `${prefix} today`;
   if (delta > 0) return `${prefix} in ${delta}d`;
   return `${prefix} overdue by ${Math.abs(delta)}d`;
+}
+
+function formatDateLabel(dateString) {
+  if (!dateString) return 'Unscheduled';
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return dateString;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function computePriority(caseItem) {
@@ -360,6 +533,7 @@ function computePriority(caseItem) {
     touchOverdue,
     touchDueSoon,
     daysSinceLast,
+    daysSinceCreated,
     recommendation,
   };
 }
@@ -448,6 +622,19 @@ function renderQueue(cases) {
             <div class="muted">Next step</div>
             <div>${item.nextStep || 'TBD'}</div>
           </div>
+          <div class="queue-actions">
+            <div class="muted">Quick actions</div>
+            <div class="queue-action-buttons">
+              ${
+                item.status === 'Resolved'
+                  ? `<button class="ghost tiny" data-action="reopen" data-id="${item.id}">Reopen</button>`
+                  : `
+                    <button class="ghost tiny" data-action="touch" data-id="${item.id}">Touch today</button>
+                    <button class="ghost tiny danger" data-action="resolve" data-id="${item.id}">Resolve</button>
+                  `
+              }
+            </div>
+          </div>
         </div>
       `
     )
@@ -479,6 +666,40 @@ function renderActions(cases) {
   if (!actionItems.length) {
     actionsEl.innerHTML = '<p class="muted">No active cases yet.</p>';
   }
+}
+
+function median(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+function getVelocityStats(cases) {
+  const intake7 = cases.filter((item) => inLastDays(item.created, 7)).length;
+  const resolved = cases.filter((item) => item.status === 'Resolved');
+  const resolved7 = resolved.filter((item) => inLastDays(item.lastTouch, 7)).length;
+  const recentResolved = resolved.filter((item) => inLastDays(item.lastTouch, 30));
+  const resolutionDays = recentResolved
+    .map((item) => diffDays(item.created, item.lastTouch))
+    .filter((value) => value !== null);
+
+  const onTimeCandidates = recentResolved.filter((item) => item.due && item.lastTouch);
+  const onTimeCount = onTimeCandidates.filter(
+    (item) => new Date(item.lastTouch) <= new Date(item.due)
+  ).length;
+  const onTimeRate = onTimeCandidates.length
+    ? Math.round((onTimeCount / onTimeCandidates.length) * 100)
+    : null;
+
+  return {
+    intake7,
+    resolved7,
+    net7: resolved7 - intake7,
+    medianResolution: median(resolutionDays),
+    resolutionSample: resolutionDays.length,
+    onTimeRate,
+    onTimeSample: onTimeCandidates.length,
+  };
 }
 
 function renderOwnerWorkload(cases) {
@@ -527,6 +748,41 @@ function renderOwnerWorkload(cases) {
     .join('');
 }
 
+function getOwnerLoads(active) {
+  const loads = new Map();
+  active.forEach((item) => {
+    const owner = item.owner?.trim();
+    if (!owner) return;
+    loads.set(owner, (loads.get(owner) || 0) + 1);
+  });
+  return loads;
+}
+
+function buildCoverageSuggestions(active, limit = 4) {
+  const unassigned = active.filter((item) => !item.owner || !item.owner.trim());
+  if (!unassigned.length) {
+    return { suggestions: [], reason: 'No unassigned cases right now.' };
+  }
+
+  const ownerLoads = getOwnerLoads(active);
+  if (!ownerLoads.size) {
+    return { suggestions: [], reason: 'No owners assigned yet. Add owners to generate suggestions.' };
+  }
+
+  const loadList = Array.from(ownerLoads.entries()).map(([owner, count]) => ({ owner, count }));
+  const sortedUnassigned = [...unassigned].sort((a, b) => b.score - a.score).slice(0, limit);
+  const suggestions = [];
+
+  sortedUnassigned.forEach((item) => {
+    loadList.sort((a, b) => a.count - b.count || a.owner.localeCompare(b.owner));
+    const pick = loadList[0];
+    suggestions.push({ item, owner: pick.owner, count: pick.count });
+    pick.count += 1;
+  });
+
+  return { suggestions, reason: '' };
+}
+
 function renderRiskRadar(cases) {
   const active = cases.filter((item) => item.status !== 'Resolved');
   const overdue = active.filter((item) => item.overdue).length;
@@ -562,6 +818,492 @@ function renderRiskRadar(cases) {
     .join('');
 }
 
+function renderCoverageSuggestions(cases) {
+  const active = cases.filter((item) => item.status !== 'Resolved');
+  if (!coverageSuggestionsEl) return;
+
+  const { suggestions, reason } = buildCoverageSuggestions(active);
+  if (!suggestions.length) {
+    coverageSuggestionsEl.innerHTML = `<p class="muted">${reason || 'No coverage suggestions yet.'}</p>`;
+    return;
+  }
+
+  coverageSuggestionsEl.innerHTML = suggestions
+    .map(({ item, owner, count }) => {
+      const statusLabel = item.overdue
+        ? 'Overdue'
+        : item.touchOverdue
+          ? 'Touch overdue'
+          : 'Needs owner';
+      const statusClass = item.overdue ? 'danger' : item.touchOverdue ? 'warning' : 'ok';
+      return `
+        <div class="coverage-row">
+          <div>
+            <strong>${item.scholar}</strong>
+            <span class="muted">${item.summary}</span>
+            <span class="coverage-meta">${item.urgency} · ${item.category}</span>
+          </div>
+          <div class="coverage-actions">
+            <span class="pill ${statusClass}">${statusLabel}</span>
+            <span class="coverage-owner">Suggest: ${owner} (${count} active)</span>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+}
+
+function renderResponsePlaybook(cases) {
+  if (!responsePlaybookEl) return;
+  const active = cases.filter((item) => item.status !== 'Resolved');
+  if (!active.length) {
+    responsePlaybookEl.innerHTML = '<p class="muted">No active cases to guide yet.</p>';
+    return;
+  }
+
+  const categoryCounts = active.reduce((acc, item) => {
+    const category = item.category?.trim() || 'Unspecified';
+    acc[category] = (acc[category] || 0) + 1;
+    return acc;
+  }, {});
+
+  const topCategories = Object.entries(categoryCounts)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 3);
+
+  responsePlaybookEl.innerHTML = topCategories
+    .map(([category, count]) => {
+      const playbook = responsePlaybooks[category] || defaultPlaybook;
+      const highUrgencyCount = active.filter(
+        (item) =>
+          (item.category?.trim() || 'Unspecified') === category &&
+          ['High', 'Critical'].includes(item.urgency)
+      ).length;
+      const highPct = Math.round((highUrgencyCount / count) * 100);
+      return `
+        <div class="playbook-card">
+          <div class="playbook-header">
+            <div>
+              <h3>${category}</h3>
+              <p>${count} active · ${highPct}% high urgency</p>
+            </div>
+            <span class="pill">Lead: ${playbook.lead}</span>
+          </div>
+          <ul class="playbook-steps">
+            ${playbook.steps.map((step) => `<li>${step}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+    })
+    .join('');
+}
+
+function renderResolutionVelocity(cases) {
+  if (!resolutionVelocityEl) return;
+  const stats = getVelocityStats(cases);
+
+  resolutionVelocityEl.innerHTML = `
+    <div class="velocity-row">
+      <div>
+        <strong>Resolved (7d)</strong>
+        <span class="muted">${stats.resolved7} cases closed</span>
+      </div>
+      <span class="pill ${stats.resolved7 ? 'ok' : ''}">${stats.resolved7}</span>
+    </div>
+    <div class="velocity-row">
+      <div>
+        <strong>Intake (7d)</strong>
+        <span class="muted">${stats.intake7} new cases opened</span>
+      </div>
+      <span class="pill ${stats.intake7 ? 'warning' : ''}">${stats.intake7}</span>
+    </div>
+    <div class="velocity-row">
+      <div>
+        <strong>Backlog change</strong>
+        <span class="muted">Net flow in the last 7 days</span>
+      </div>
+      <span class="pill ${stats.net7 >= 0 ? 'ok' : 'warning'}">${stats.net7 >= 0 ? '+' : ''}${stats.net7}</span>
+    </div>
+    <div class="velocity-row">
+      <div>
+        <strong>Median resolution</strong>
+        <span class="muted">${stats.resolutionSample ? `${stats.resolutionSample} resolved cases (30d)` : 'No recent resolutions yet'}</span>
+      </div>
+      <span class="pill ${stats.medianResolution !== null ? 'ok' : ''}">${stats.medianResolution !== null ? `${stats.medianResolution}d` : 'n/a'}</span>
+    </div>
+  `;
+}
+
+function renderSlaCompliance(cases) {
+  if (!slaComplianceEl) return;
+  const active = cases.filter((item) => item.status !== 'Resolved');
+  const touchOverdue = active.filter((item) => item.touchOverdue).length;
+  const overdue = active.filter((item) => item.overdue).length;
+  const upcoming = active.filter((item) => item.dueSoon || item.touchDueSoon).length;
+  const touchCompliance = active.length
+    ? Math.round(((active.length - touchOverdue) / active.length) * 100)
+    : null;
+
+  const stats = getVelocityStats(cases);
+
+  slaComplianceEl.innerHTML = `
+    <div class="compliance-row">
+      <div>
+        <strong>On-time resolutions</strong>
+        <span class="muted">${stats.onTimeSample ? `${stats.onTimeSample} resolved cases (30d)` : 'No resolved cases with SLAs yet'}</span>
+      </div>
+      <span class="pill ${stats.onTimeRate !== null && stats.onTimeRate >= 80 ? 'ok' : 'warning'}">
+        ${stats.onTimeRate !== null ? `${stats.onTimeRate}%` : 'n/a'}
+      </span>
+    </div>
+    <div class="compliance-row">
+      <div>
+        <strong>Touchpoint compliance</strong>
+        <span class="muted">${active.length} active cases monitored</span>
+      </div>
+      <span class="pill ${touchCompliance !== null && touchCompliance >= 80 ? 'ok' : 'warning'}">
+        ${touchCompliance !== null ? `${touchCompliance}%` : 'n/a'}
+      </span>
+    </div>
+    <div class="compliance-row">
+      <div>
+        <strong>Upcoming SLA risk</strong>
+        <span class="muted">${upcoming} due soon · ${overdue} overdue</span>
+      </div>
+      <span class="pill ${upcoming || overdue ? 'warning' : 'ok'}">${upcoming + overdue}</span>
+    </div>
+  `;
+}
+
+function buildBreakdown(items, key, options = {}) {
+  const counts = new Map();
+  items.forEach((item) => {
+    const raw = item[key];
+    const label =
+      typeof raw === 'string' && raw.trim() ? raw.trim() : raw ? String(raw) : 'Unspecified';
+    counts.set(label, (counts.get(label) || 0) + 1);
+  });
+
+  let entries = Array.from(counts.entries());
+  if (options.order) {
+    const ordered = [];
+    options.order.forEach((label) => {
+      const count = counts.get(label);
+      if (count) ordered.push([label, count]);
+    });
+    const orderedLabels = new Set(options.order);
+    const remainder = entries
+      .filter(([label]) => !orderedLabels.has(label))
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    entries = [...ordered, ...remainder];
+  } else {
+    entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }
+
+  const total = items.length;
+  const limit = options.limit ?? entries.length;
+  const top = entries.slice(0, limit);
+  const remainder = entries.slice(limit).reduce((acc, [, count]) => acc + count, 0);
+  if (remainder) {
+    top.push([options.remainderLabel || 'Other', remainder]);
+  }
+
+  return {
+    total,
+    rows: top.map(([label, count]) => ({
+      label,
+      count,
+      pct: total ? Math.round((count / total) * 100) : 0,
+    })),
+  };
+}
+
+function renderBreakdownCard({ title, subtitle, data }) {
+  const rows = data.rows
+    .map(
+      (row) => `
+        <div class="signal-row">
+          <span class="signal-label">${row.label}</span>
+          <div class="signal-bar"><span style="width: ${row.pct}%;"></span></div>
+          <span class="signal-count">${row.count} · ${row.pct}%</span>
+        </div>
+      `
+    )
+    .join('');
+
+  return `
+    <div class="signal-card">
+      <div>
+        <h3>${title}</h3>
+        <p>${subtitle}</p>
+      </div>
+      ${rows || '<p class="muted">No data yet.</p>'}
+    </div>
+  `;
+}
+
+function renderSignalBreakdown(cases) {
+  if (!signalBreakdownEl) return;
+  const active = cases.filter((item) => item.status !== 'Resolved');
+
+  if (!active.length) {
+    signalBreakdownEl.innerHTML = '<p class="muted">No active cases to summarize yet.</p>';
+    return;
+  }
+
+  const channelData = buildBreakdown(active, 'channel', {
+    limit: 4,
+    remainderLabel: 'Other channels',
+  });
+  const categoryData = buildBreakdown(active, 'category', {
+    limit: 4,
+    remainderLabel: 'Other categories',
+  });
+  const urgencyData = buildBreakdown(active, 'urgency', {
+    order: ['Critical', 'High', 'Medium', 'Low'],
+  });
+
+  signalBreakdownEl.innerHTML = [
+    renderBreakdownCard({
+      title: 'Channel mix',
+      subtitle: `${channelData.total} active cases`,
+      data: channelData,
+    }),
+    renderBreakdownCard({
+      title: 'Category mix',
+      subtitle: 'Top support themes',
+      data: categoryData,
+    }),
+    renderBreakdownCard({
+      title: 'Urgency mix',
+      subtitle: 'Operational pressure profile',
+      data: urgencyData,
+    }),
+  ].join('');
+}
+
+function renderOutreachPlan(cases) {
+  const active = cases.filter((item) => item.status !== 'Resolved');
+  const candidates = active.filter(
+    (item) =>
+      item.overdue ||
+      item.touchOverdue ||
+      item.dueSoon ||
+      item.touchDueSoon ||
+      item.daysSinceLast >= 7 ||
+      ['High', 'Critical'].includes(item.urgency)
+  );
+  const plan = candidates.sort((a, b) => b.score - a.score).slice(0, 6);
+
+  if (!plan.length) {
+    outreachPlanEl.innerHTML = '<p class="muted">No high-touch cases right now.</p>';
+    return;
+  }
+
+  outreachPlanEl.innerHTML = plan
+    .map(
+      (item) => `
+        <div class="plan-item">
+          <div class="plan-main">
+            <strong>${item.scholar}</strong>
+            <span class="muted">${item.summary}</span>
+            <span class="plan-owner">${item.owner || 'Unassigned'} · ${item.urgency}</span>
+          </div>
+          <div class="plan-tags">
+            <span class="chip ${item.overdue ? 'danger' : item.dueSoon ? 'warning' : 'ok'}">
+              ${item.due ? formatDelta(item.dueInDays) : 'Due date n/a'}
+            </span>
+            <span class="chip ${item.touchOverdue ? 'danger' : item.touchDueSoon ? 'warning' : 'ok'}">
+              ${item.nextTouchDue ? `${formatDateLabel(item.nextTouchDue)} · ${formatDelta(item.daysToNextTouch, 'touch')}` : 'Touch SLA n/a'}
+            </span>
+          </div>
+        </div>
+      `
+    )
+    .join('');
+}
+
+function renderAgingSummary(cases) {
+  const active = cases.filter((item) => item.status !== 'Resolved');
+  if (!active.length) {
+    agingSummaryEl.innerHTML = '<p class="muted">No active cases to age yet.</p>';
+    return;
+  }
+
+  const buckets = [
+    { label: '0-2 days', min: 0, max: 2 },
+    { label: '3-6 days', min: 3, max: 6 },
+    { label: '7-13 days', min: 7, max: 13 },
+    { label: '14+ days', min: 14, max: Infinity },
+  ];
+
+  const total = active.length;
+  const medianAge = [...active]
+    .map((item) => item.daysSinceCreated)
+    .sort((a, b) => a - b)[Math.floor(total / 2)];
+
+  agingSummaryEl.innerHTML = `
+    <div class="aging-meta">
+      <p class="muted">Median case age</p>
+      <div class="aging-value">${medianAge}d</div>
+    </div>
+    <div class="aging-grid">
+      ${buckets
+        .map((bucket, index) => {
+          const count = active.filter(
+            (item) => item.daysSinceCreated >= bucket.min && item.daysSinceCreated <= bucket.max
+          ).length;
+          const percent = Math.round((count / total) * 100);
+          const level = index === buckets.length - 1 ? 'danger' : index >= 2 ? 'warning' : 'ok';
+          return `
+            <div class="insight-row">
+              <div>
+                <strong>${bucket.label}</strong>
+                <span class="muted">${count} cases</span>
+              </div>
+              <div class="insight-metric">
+                <span class="pill ${count ? level : 'ok'}">${percent}%</span>
+              </div>
+            </div>
+          `;
+        })
+        .join('')}
+    </div>
+  `;
+}
+
+function renderChannelMix(cases) {
+  const active = cases.filter((item) => item.status !== 'Resolved');
+  if (!active.length) {
+    channelMixEl.innerHTML = '<p class="muted">No active channels yet.</p>';
+    return;
+  }
+
+  const total = active.length;
+  const counts = active.reduce((acc, item) => {
+    const channel = item.channel || 'Other';
+    acc[channel] = (acc[channel] || 0) + 1;
+    return acc;
+  }, {});
+
+  const rows = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
+
+  channelMixEl.innerHTML = rows
+    .map(([channel, count]) => {
+      const percent = Math.round((count / total) * 100);
+      return `
+        <div class="mix-row">
+          <div class="mix-meta">
+            <strong>${channel}</strong>
+            <span class="muted">${count} cases · ${percent}%</span>
+          </div>
+          <div class="mix-bar">
+            <span style="width: ${percent}%"></span>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+}
+
+function renderSlaOutlook(cases) {
+  const active = cases.filter((item) => item.status !== 'Resolved');
+  const events = [];
+
+  active.forEach((item) => {
+    if (item.due) {
+      const dueIn = item.dueInDays;
+      if (dueIn !== null && dueIn <= 3) {
+        events.push({
+          date: item.due,
+          type: 'Case due',
+          item,
+          delta: dueIn,
+        });
+      }
+    }
+    if (item.nextTouchDue) {
+      const touchIn = item.daysToNextTouch;
+      if (touchIn !== null && touchIn <= 2) {
+        events.push({
+          date: item.nextTouchDue,
+          type: 'Touchpoint',
+          item,
+          delta: touchIn,
+        });
+      }
+    }
+  });
+
+  if (!events.length) {
+    slaOutlookEl.innerHTML = '<p class="muted">No touchpoints or due dates in the next 72 hours.</p>';
+    return;
+  }
+
+  const grouped = events.reduce((acc, event) => {
+    if (!acc[event.date]) acc[event.date] = [];
+    acc[event.date].push(event);
+    return acc;
+  }, {});
+
+  const sortedDates = Object.keys(grouped).sort((a, b) => new Date(a) - new Date(b));
+
+  slaOutlookEl.innerHTML = sortedDates
+    .map((date) => {
+      const items = grouped[date]
+        .sort((a, b) => a.delta - b.delta)
+        .map(
+          (event) => `
+            <div class="outlook-row">
+              <div>
+                <strong>${event.item.scholar}</strong>
+                <span class="muted">${event.type} · ${event.item.owner || 'Unassigned'}</span>
+              </div>
+              <span class="pill ${event.delta < 0 ? 'danger' : event.delta === 0 ? 'warning' : ''}">
+                ${formatDelta(event.delta, event.type === 'Touchpoint' ? 'touch' : 'due')}
+              </span>
+            </div>
+          `
+        )
+        .join('');
+
+      return `
+        <div class="outlook-block">
+          <div class="outlook-header">${formatDateLabel(date)}</div>
+          ${items}
+        </div>
+      `;
+    })
+    .join('');
+}
+
+function getTopBreakdown(items, key, order) {
+  if (!items.length) return null;
+  const counts = new Map();
+  items.forEach((item) => {
+    const raw = item[key];
+    const label =
+      typeof raw === 'string' && raw.trim() ? raw.trim() : raw ? String(raw) : 'Unspecified';
+    counts.set(label, (counts.get(label) || 0) + 1);
+  });
+
+  if (order) {
+    for (const label of order) {
+      if (counts.has(label)) {
+        return { label, count: counts.get(label) };
+      }
+    }
+  }
+
+  const entries = Array.from(counts.entries()).sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0])
+  );
+  if (!entries.length) return null;
+  return { label: entries[0][0], count: entries[0][1] };
+}
+
 function renderBrief(cases) {
   const active = cases.filter((item) => item.status !== 'Resolved');
   const overdue = active.filter((item) => item.overdue);
@@ -569,6 +1311,10 @@ function renderBrief(cases) {
   const touchOverdue = active.filter((item) => item.touchOverdue);
   const highUrgency = active.filter((item) => ['High', 'Critical'].includes(item.urgency));
   const unassigned = active.filter((item) => !item.owner);
+  const topChannel = getTopBreakdown(active, 'channel');
+  const topCategory = getTopBreakdown(active, 'category');
+  const topUrgency = getTopBreakdown(active, 'urgency', ['Critical', 'High', 'Medium', 'Low']);
+  const velocity = getVelocityStats(cases);
   const ownerLoad = active.reduce((acc, item) => {
     const owner = item.owner?.trim() || 'Unassigned';
     acc[owner] = (acc[owner] || 0) + 1;
@@ -586,6 +1332,16 @@ function renderBrief(cases) {
     .map((item) => `- ${item.scholar}: ${item.summary} (${item.urgency}, owner: ${item.owner || 'unassigned'})`)
     .join('\n');
 
+  const coverage = buildCoverageSuggestions(active, 2);
+  const coverageLines = coverage.suggestions.length
+    ? coverage.suggestions
+        .map(
+          ({ item, owner, count }) =>
+            `- ${item.scholar}: suggest ${owner} (${count} active, ${item.urgency})`
+        )
+        .join('\n')
+    : `- ${coverage.reason || 'No unassigned cases right now.'}`;
+
   briefEl.value = [
     `Support Triage Brief (${todayIso()})`,
     `Active cases: ${active.length}`,
@@ -594,12 +1350,29 @@ function renderBrief(cases) {
     `Unassigned: ${unassigned.length}`,
     `Due soon (<=2d): ${dueSoon.length}`,
     `Touch overdue: ${touchOverdue.length}`,
+    `Throughput (7d): ${velocity.resolved7} resolved vs ${velocity.intake7} intake (net ${velocity.net7 >= 0 ? '+' : ''}${velocity.net7})`,
+    `Median resolution (30d): ${velocity.medianResolution !== null ? `${velocity.medianResolution}d` : 'n/a'}`,
+    `On-time resolution (30d): ${velocity.onTimeRate !== null ? `${velocity.onTimeRate}%` : 'n/a'}`,
     '',
     'Top priorities:',
     topCases || '- None yet',
     '',
     'Owner load:',
     ownerSummary || '- No active owners yet',
+    '',
+    'Coverage suggestions:',
+    coverageLines,
+    '',
+    'Signal mix:',
+    topChannel
+      ? `- Top channel: ${topChannel.label} (${topChannel.count})`
+      : '- Top channel: n/a',
+    topCategory
+      ? `- Top category: ${topCategory.label} (${topCategory.count})`
+      : '- Top category: n/a',
+    topUrgency
+      ? `- Leading urgency: ${topUrgency.label} (${topUrgency.count})`
+      : '- Leading urgency: n/a',
     '',
     'Watch list:',
     overdue.length ? `- Overdue cases: ${overdue.length}` : '- No overdue cases',
@@ -630,6 +1403,13 @@ function render() {
   renderActions(enriched);
   renderOwnerWorkload(enriched);
   renderRiskRadar(enriched);
+  renderResolutionVelocity(enriched);
+  renderSlaCompliance(enriched);
+  renderOutreachPlan(enriched);
+  renderAgingSummary(enriched);
+  renderChannelMix(enriched);
+  renderSignalBreakdown(enriched);
+  renderSlaOutlook(enriched);
   renderBrief(enriched);
 }
 
@@ -691,6 +1471,27 @@ function handleCopyBrief() {
   });
 }
 
+async function handleQuickAction(action, id) {
+  const today = todayIso();
+  let updates = {};
+  if (action === 'touch') {
+    updates = { lastTouch: today };
+  }
+  if (action === 'resolve') {
+    updates = { status: 'Resolved', lastTouch: today };
+  }
+  if (action === 'reopen') {
+    updates = { status: 'Open', lastTouch: today };
+  }
+
+  if (!Object.keys(updates).length) return;
+
+  const updated = await updateCaseRecord(id, updates);
+  if (!updated) return;
+  state.cases = state.cases.map((item) => (item.id === id ? updated : item));
+  render();
+}
+
 function initDates() {
   const createdInput = document.getElementById('created');
   const lastTouchInput = document.getElementById('last-touch');
@@ -722,6 +1523,11 @@ clearButton.addEventListener('click', () => {
 exportButton.addEventListener('click', handleExport);
 importInput.addEventListener('change', handleImport);
 copyBriefButton.addEventListener('click', handleCopyBrief);
+queueEl.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-action]');
+  if (!button) return;
+  handleQuickAction(button.dataset.action, button.dataset.id);
+});
 
 async function init() {
   initDates();

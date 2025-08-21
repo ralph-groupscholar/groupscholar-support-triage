@@ -1,39 +1,31 @@
 # Group Scholar Support Triage
 
-A local-first support desk for scholar-facing cases. Capture new support requests, score urgency, surface overdue risks, and generate weekly briefs without standing up new infrastructure.
+A local-first support desk for scholar-facing cases with optional cloud sync. Capture new support requests, score urgency, surface overdue risks, and generate weekly briefs with shared visibility when needed.
 
 ## Features
 - Case intake with urgency, category, owner, and SLA dates
 - Priority scoring with due-soon and touchpoint SLA detection
 - Action list for the top cases that need attention today
+- Outreach plan for high-touch cases that need updates or escalations
+- SLA outlook for upcoming due dates and touchpoint deadlines
+- Case aging summary, channel mix, and signal breakdown insights
+- Resolution velocity and SLA compliance tracking
 - Weekly brief output ready for leadership updates
 - JSON import/export for sharing snapshots across teams
 - Local storage persistence
-- Optional shared Postgres storage for team-wide visibility
+- Optional Postgres sync for team-wide visibility
+- Storage health indicator in the UI
 
 ## Getting started (local)
-Open `index.html` in your browser.
+Open `index.html` in your browser for local-first mode.
 
-## Getting started (shared database)
-1. Install dependencies:
+## Cloud sync
+Deploy to Vercel and set `DATABASE_URL` to a Postgres connection string. The API lives in `api/cases.js` (plus `api/health.js` and `api/seed.js`), and the schema + seed SQL live in `data/schema.sql` and `data/seed.sql`. The UI automatically checks `/api/health` and switches to the shared database when available.
 
-```bash
-npm install
-```
-
-2. Start the API server (reads `DATABASE_URL` if set, otherwise uses local file storage):
+To initialize the production database with schema + sample data, run:
 
 ```bash
-node server.js
-```
-
-3. Open `http://localhost:3000`.
-
-## Database seeding
-Seed the production database with realistic sample cases using the helper script. This requires `DATABASE_URL` to be set in your environment (do not commit credentials).
-
-```bash
-node scripts/seed-db.js
+DATABASE_URL="postgres://user:pass@host:port/db" npm run setup-db
 ```
 
 ## Data format
@@ -63,5 +55,5 @@ Exported JSON is structured as:
 
 ## Tech
 - HTML, CSS, JavaScript
-- Node.js, Express, Postgres (optional)
-- Local browser storage
+- Node.js (Vercel serverless functions)
+- PostgreSQL (optional sync)

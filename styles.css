@@ -334,6 +334,144 @@ button.danger {
   gap: 6px;
 }
 
+.plan-item {
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+  display: grid;
+  gap: 10px;
+}
+
+.plan-item + .plan-item {
+  margin-top: 12px;
+}
+
+.plan-main {
+  display: grid;
+  gap: 6px;
+}
+
+.plan-owner {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.plan-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.aging-meta {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.aging-value {
+  font-size: 1.8rem;
+  font-weight: 600;
+}
+
+.aging-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.insight-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+  align-items: center;
+}
+
+.insight-row strong {
+  display: block;
+}
+
+.insight-row .muted {
+  font-size: 0.85rem;
+}
+
+.insight-metric {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mix-row {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.mix-row + .mix-row {
+  margin-top: 10px;
+}
+
+.mix-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.mix-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(15, 27, 43, 0.08);
+  overflow: hidden;
+}
+
+.mix-bar span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(242, 107, 58, 0.7), rgba(34, 117, 255, 0.65));
+}
+
+.outlook-block {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+  padding: 14px 16px;
+}
+
+.outlook-block + .outlook-block {
+  margin-top: 12px;
+}
+
+.outlook-header {
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.outlook-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.outlook-row:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
 .action-item strong {
   font-size: 1rem;
 }
@@ -368,6 +506,29 @@ button.danger {
   justify-content: flex-end;
 }
 
+.velocity-grid,
+.compliance-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.velocity-row,
+.compliance-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.velocity-row .muted,
+.compliance-row .muted {
+  font-size: 0.85rem;
+}
+
 .pill {
   padding: 4px 10px;
   border-radius: 999px;
@@ -390,6 +551,65 @@ button.danger {
   background: rgba(177, 40, 40, 0.12);
   border-color: rgba(177, 40, 40, 0.25);
   color: #8e1f1f;
+}
+
+.signal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.signal-card {
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  display: grid;
+  gap: 12px;
+}
+
+.signal-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.signal-card p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.signal-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.signal-label {
+  font-size: 0.85rem;
+}
+
+.signal-count {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-align: right;
+}
+
+.signal-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(15, 27, 43, 0.08);
+  overflow: hidden;
+}
+
+.signal-bar span {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: linear-gradient(90deg, rgba(242, 107, 58, 0.6), rgba(34, 117, 255, 0.5));
+  border-radius: inherit;
 }
 
 .inline-actions {
