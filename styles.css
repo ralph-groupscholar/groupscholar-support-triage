@@ -405,6 +405,106 @@ button.danger {
   flex-wrap: wrap;
 }
 
+.cadence-row {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.cadence-row + .cadence-row {
+  margin-top: 12px;
+}
+
+.cadence-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.cadence-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cadence-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(15, 27, 43, 0.08);
+  overflow: hidden;
+}
+
+.cadence-bar span {
+  height: 100%;
+  display: block;
+}
+
+.cadence-bar .overdue {
+  background: rgba(177, 40, 40, 0.55);
+}
+
+.cadence-bar .soon {
+  background: rgba(242, 107, 58, 0.6);
+}
+
+.cadence-bar .ok {
+  background: rgba(20, 190, 150, 0.5);
+}
+
+.focus-card {
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+  display: grid;
+  gap: 12px;
+}
+
+.focus-card + .focus-card {
+  margin-top: 12px;
+}
+
+.focus-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.focus-header .muted {
+  font-size: 0.85rem;
+}
+
+.focus-list {
+  display: grid;
+  gap: 10px;
+}
+
+.focus-item {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(15, 27, 43, 0.02);
+  display: grid;
+  gap: 8px;
+}
+
+.focus-main {
+  display: grid;
+  gap: 4px;
+}
+
+.focus-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 .aging-meta {
   display: grid;
   gap: 6px;

@@ -200,6 +200,34 @@ function appendLocalEvent(event) {
   return next;
 }
 
+async function persistEvent(event) {
+  if (state.storage.mode === 'remote') {
+    try {
+      const response = await fetch('/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event),
+      });
+      if (!response.ok) throw new Error('Event write failed');
+      const payload = await response.json();
+      const stored = payload.event || event;
+      state.events = [stored, ...state.events].slice(0, 50);
+      return stored;
+    } catch (error) {
+      console.warn('Falling back to local event log', error);
+    }
+  }
+
+  const next = appendLocalEvent(event);
+  state.events = next;
+  return event;
+}
+
+async function logEvent(action, caseItem, detail, overrides) {
+  const event = buildEvent(action, caseItem, detail, overrides);
+  return persistEvent(event);
+}
+
 function shiftDate(days) {
   const date = new Date();
   date.setDate(date.getDate() + days);
@@ -292,12 +320,7 @@ async function readEvents() {
       const payload = await response.json();
       return Array.isArray(payload.events) ? payload.events : [];
     } catch (error) {
-      updateStorageStatus({
-        mode: 'local',
-        label: 'Local browser storage',
-        detail: 'Server unreachable. Switched to offline mode.',
-        healthy: false,
-      });
+      console.warn('Event feed unavailable, showing local events only.', error);
     }
   }
 
@@ -1426,15 +1449,15 @@ function renderSlaOutlook(cases) {
     .join('');
 }
 
-function renderActivityFeed() {
+function renderActivityFeed(events) {
   if (!activityFeedEl) return;
-  const events = loadLocalEvents();
-  if (!events.length) {
+  const activity = Array.isArray(events) ? events : [];
+  if (!activity.length) {
     activityFeedEl.innerHTML = '<p class="muted">No recent activity yet.</p>';
     return;
   }
 
-  const recent = events.slice(0, 8);
+  const recent = activity.slice(0, 8);
   activityFeedEl.innerHTML = recent
     .map((event) => {
       const label = actionLabels[event.action] || 'Update';
@@ -1613,12 +1636,13 @@ function render() {
   renderChannelMix(enriched);
   renderSignalBreakdown(enriched);
   renderSlaOutlook(enriched);
-  renderActivityFeed();
+  renderActivityFeed(state.events);
   renderBrief(enriched);
 }
 
 async function refreshCases() {
   state.cases = await readCases();
+  state.events = await readEvents();
   render();
 }
 

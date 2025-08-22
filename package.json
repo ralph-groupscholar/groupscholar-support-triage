@@ -1,15 +1,13 @@
 {
   "name": "groupscholar-support-triage",
-  "version": "0.1.0",
-  "description": "Support triage desk for scholar-facing cases with optional shared Postgres storage.",
-  "main": "server.js",
+  "version": "1.1.0",
+  "description": "Support triage desk for scholar-facing cases with optional cloud sync.",
+  "license": "MIT",
   "type": "commonjs",
   "scripts": {
-    "start": "node server.js",
-    "seed:db": "node scripts/seed-db.js"
+    "setup-db": "node scripts/setup-db.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "pg": "^8.11.5"
+    "pg": "^8.13.3"
   }
 }
